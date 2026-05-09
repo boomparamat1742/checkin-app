@@ -1,0 +1,24 @@
+{
+  "name": "checkin-app",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@supabase/supabase-js": "^2.105.4",
+    "file-saver": "^2.0.5",
+    "nuxt": "^3.21.4",
+    "vue": "^3.5.33",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/file-saver": "^2.0.7",
+    "@types/node": "^25.6.2"
+  }
+}
