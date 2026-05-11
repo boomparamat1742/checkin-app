@@ -194,7 +194,7 @@ async function handleCheckin() {
             <span class="info-icon">⏰</span>
             <div>
               <p class="info-title">เวลาเช็คชื่อ</p>
-              <p class="info-value">08:15 – 08:30</p>
+              <p class="info-value">08:00 – 08:15</p>
             </div>
           </div>
           <div class="info-box">
