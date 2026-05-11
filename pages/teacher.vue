@@ -27,51 +27,14 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
 
 function getTeacherCheckinStatus() {
   const now = new Date();
-
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  // 08:00
-  const normalStart = 8 * 60;
-
-  // 08:15
-  const lateStart = 8 * 60 + 15;
-
-  // 08:30
-  const endMinutes = 8 * 60 + 30;
-
-  // ก่อน 08:00
-  if (currentMinutes < normalStart) {
-    return {
-      allow: false,
-      status: null,
-      message: "ยังไม่ถึงเวลาเช็คชื่อ",
-    };
-  }
-
-  // 08:00 - 08:15 = ปกติ
-  if (currentMinutes <= lateStart) {
-    return {
-      allow: true,
-      status: "normal",
-      message: "เช็คชื่อสำเร็จ",
-    };
-  }
-
-  // 08:16 - 08:30 = มาสาย
-  if (currentMinutes <= endMinutes) {
-    return {
-      allow: true,
-      status: "late",
-      message: "เช็คชื่อสำเร็จ (มาสาย)",
-    };
-  }
-
-  // หลัง 08:30
-  return {
-    allow: false,
-    status: null,
-    message: "หมดเวลาเช็คชื่อแล้ว",
-  };
+  const startMinutes = 8 * 60;
+  const lateMinutes = 8 * 60 + 15;
+  if (currentMinutes < startMinutes)
+    return { allow: false, status: null, message: "ยังไม่ถึงเวลาเช็คชื่อของครู" };
+  if (currentMinutes > lateMinutes)
+    return { allow: true, status: "late", message: "เช็คชื่อสำเร็จ (มาสาย)" };
+  return { allow: true, status: "normal", message: "เช็คชื่อสำเร็จ" };
 }
 
 async function getTeacherData() {
@@ -163,7 +126,7 @@ async function handleCheckin() {
       statusType.value = "error";
       loading.value = false;
     },
-    { enableHighAccuracy: true },
+    { enableHighAccuracy: true }
   );
 }
 </script>
@@ -171,6 +134,7 @@ async function handleCheckin() {
 <template>
   <div class="page-wrapper">
     <div class="ck-card">
+
       <!-- Header -->
       <div class="ck-header">
         <div class="blob-1" />
@@ -186,6 +150,7 @@ async function handleCheckin() {
 
       <!-- Body -->
       <div class="ck-body">
+
         <!-- Section label -->
         <p class="section-label">ข้อมูลครู</p>
 
@@ -229,7 +194,7 @@ async function handleCheckin() {
             <span class="info-icon">⏰</span>
             <div>
               <p class="info-title">เวลาเช็คชื่อ</p>
-              <p class="info-value">08:00 – 08:15</p>
+              <p class="info-value">08:15 – 08:30</p>
             </div>
           </div>
           <div class="info-box">
@@ -266,6 +231,7 @@ async function handleCheckin() {
         <div class="back-wrap">
           <NuxtLink to="/" class="back-link">← กลับหน้าหลัก</NuxtLink>
         </div>
+
       </div>
     </div>
   </div>
@@ -279,7 +245,7 @@ async function handleCheckin() {
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  font-family: "Sarabun", sans-serif;
+  font-family: 'Sarabun', sans-serif;
 }
 
 /* Card */
@@ -302,20 +268,16 @@ async function handleCheckin() {
 
 .blob-1 {
   position: absolute;
-  top: -50px;
-  right: -50px;
-  width: 160px;
-  height: 160px;
+  top: -50px; right: -50px;
+  width: 160px; height: 160px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.07);
 }
 
 .blob-2 {
   position: absolute;
-  bottom: -30px;
-  left: 20px;
-  width: 100px;
-  height: 100px;
+  bottom: -30px; left: 20px;
+  width: 100px; height: 100px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -331,31 +293,25 @@ async function handleCheckin() {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.9);
   margin-bottom: 14px;
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
 }
 
 .badge-dot {
-  width: 6px;
-  height: 6px;
+  width: 6px; height: 6px;
   border-radius: 50%;
   background: #4ade80;
   flex-shrink: 0;
 }
 
 .ck-icon-circle {
-  width: 52px;
-  height: 52px;
+  width: 52px; height: 52px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.18);
   border: 0.5px solid rgba(255, 255, 255, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   font-size: 24px;
   margin-bottom: 12px;
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
 }
 
 .ck-title {
@@ -363,16 +319,14 @@ async function handleCheckin() {
   font-weight: 700;
   color: #fff;
   margin: 0 0 4px;
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
 }
 
 .ck-subtitle {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.72);
   margin: 0;
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
 }
 
 /* Body */
@@ -441,18 +395,13 @@ async function handleCheckin() {
   background: #f8fafc;
   padding: 0 14px 0 40px;
   font-size: 14px;
-  font-family: "Sarabun", sans-serif;
+  font-family: 'Sarabun', sans-serif;
   color: #0f172a;
   outline: none;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s,
-    background 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 
-.ck-input::placeholder {
-  color: #cbd5e1;
-}
+.ck-input::placeholder { color: #cbd5e1; }
 
 .ck-input:focus {
   border-color: #7c3aed;
@@ -527,11 +476,8 @@ async function handleCheckin() {
   color: #fff;
   font-size: 15px;
   font-weight: 700;
-  font-family: "Sarabun", sans-serif;
-  transition:
-    background 0.15s,
-    transform 0.1s,
-    box-shadow 0.15s;
+  font-family: 'Sarabun', sans-serif;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
   box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
 }
 
@@ -541,9 +487,7 @@ async function handleCheckin() {
   box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
 }
 
-.ck-btn:active:not(:disabled) {
-  transform: scale(0.99);
-}
+.ck-btn:active:not(:disabled) { transform: scale(0.99); }
 
 .ck-btn:disabled {
   opacity: 0.65;
@@ -575,8 +519,7 @@ async function handleCheckin() {
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -605,16 +548,12 @@ async function handleCheckin() {
   transition: color 0.15s;
 }
 
-.back-link:hover {
-  color: #334155;
-}
+.back-link:hover { color: #334155; }
 
 /* Transition */
 .fade-enter-active,
 .fade-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .fade-enter-from,
