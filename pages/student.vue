@@ -11,7 +11,7 @@ const statusType = ref<"success" | "error" | "">("");
 
 const TARGET_LAT = 17.614383;
 const TARGET_LNG = 103.649526;
-const ALLOWED_RADIUS = 50;
+const ALLOWED_RADIUS = 20;
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000;
@@ -31,10 +31,25 @@ function getStudentCheckinStatus() {
   const startMinutes = 6 * 60;
   const lateMinutes = 8 * 60 + 15;
   if (currentMinutes < startMinutes)
-    return { allow: false, status: null, message: "ยังไม่ถึงเวลาเช็คชื่อของนักเรียน" };
+    return {
+      allow: false,
+      status: null,
+      message: "ยังไม่ถึงเวลาเช็คชื่อของนักเรียน",
+    };
   if (currentMinutes > lateMinutes)
     return { allow: true, status: "late", message: "เช็คชื่อสำเร็จ (มาสาย)" };
   return { allow: true, status: "normal", message: "เช็คชื่อสำเร็จ" };
+}
+
+function getDeviceId() {
+  let deviceId = localStorage.getItem("device_id");
+
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem("device_id", deviceId);
+  }
+
+  return deviceId;
 }
 
 async function handleCheckin() {
@@ -43,24 +58,56 @@ async function handleCheckin() {
     statusType.value = "error";
     return;
   }
+
   const checkin = getStudentCheckinStatus();
+
   if (!checkin.allow) {
     status.value = checkin.message;
     statusType.value = "error";
     return;
   }
+
   loading.value = true;
+
+  const deviceId = getDeviceId();
+
+  // วันที่วันนี้
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  // ตรวจสอบว่า device นี้เช็คอินแล้วหรือยัง
+  const { data: existing } = await $supabase
+    .from("checkins")
+    .select("id")
+    .eq("device_id", deviceId)
+    .gte("checkin_at", today.toISOString())
+    .lt("checkin_at", tomorrow.toISOString())
+    .maybeSingle();
+
+  if (existing) {
+    status.value = "อุปกรณ์นี้เช็คชื่อแล้ววันนี้";
+    statusType.value = "error";
+    loading.value = false;
+    return;
+  }
+
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
+
       const dist = haversine(lat, lng, TARGET_LAT, TARGET_LNG);
+
       if (dist > ALLOWED_RADIUS) {
         status.value = `อยู่นอกพื้นที่ (${(dist / 1000).toFixed(2)} กิโลเมตร)`;
         statusType.value = "error";
         loading.value = false;
         return;
       }
+
       const { error } = await $supabase.from("checkins").insert({
         user_type: "student",
         checkin_status: checkin.status,
@@ -70,18 +117,22 @@ async function handleCheckin() {
         latitude: lat,
         longitude: lng,
         distance: dist,
+        device_id: deviceId,
         checkin_at: new Date().toISOString(),
       });
+
       if (error) {
         status.value = "บันทึกข้อมูลไม่สำเร็จ";
         statusType.value = "error";
       } else {
         status.value = checkin.message;
         statusType.value = "success";
+
         fullname.value = "";
         classroom.value = "";
         studentnum.value = "";
       }
+
       loading.value = false;
     },
     () => {
@@ -89,7 +140,7 @@ async function handleCheckin() {
       statusType.value = "error";
       loading.value = false;
     },
-    { enableHighAccuracy: true }
+    { enableHighAccuracy: true },
   );
 }
 </script>
@@ -97,7 +148,6 @@ async function handleCheckin() {
 <template>
   <div class="page-wrapper">
     <div class="ck-card">
-
       <!-- Header -->
       <div class="ck-header">
         <div class="blob-1" />
@@ -202,7 +252,6 @@ async function handleCheckin() {
         <div class="back-wrap">
           <NuxtLink to="/" class="back-link">← กลับหน้าหลัก</NuxtLink>
         </div>
-
       </div>
     </div>
   </div>
@@ -216,7 +265,7 @@ async function handleCheckin() {
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  font-family: 'Sarabun', sans-serif;
+  font-family: "Sarabun", sans-serif;
 }
 
 /* Card */
@@ -239,16 +288,20 @@ async function handleCheckin() {
 
 .blob-1 {
   position: absolute;
-  top: -50px; right: -50px;
-  width: 160px; height: 160px;
+  top: -50px;
+  right: -50px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.07);
 }
 
 .blob-2 {
   position: absolute;
-  bottom: -30px; left: 20px;
-  width: 100px; height: 100px;
+  bottom: -30px;
+  left: 20px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -264,25 +317,31 @@ async function handleCheckin() {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.9);
   margin-bottom: 14px;
-  position: relative; z-index: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .badge-dot {
-  width: 6px; height: 6px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #4ade80;
   flex-shrink: 0;
 }
 
 .ck-icon-circle {
-  width: 52px; height: 52px;
+  width: 52px;
+  height: 52px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.18);
   border: 0.5px solid rgba(255, 255, 255, 0.35);
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 24px;
   margin-bottom: 12px;
-  position: relative; z-index: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .ck-title {
@@ -290,14 +349,16 @@ async function handleCheckin() {
   font-weight: 700;
   color: #fff;
   margin: 0 0 4px;
-  position: relative; z-index: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .ck-subtitle {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.72);
   margin: 0;
-  position: relative; z-index: 1;
+  position: relative;
+  z-index: 1;
 }
 
 /* Body */
@@ -319,7 +380,9 @@ async function handleCheckin() {
 }
 
 /* Fields */
-.ck-field { margin-bottom: 12px; }
+.ck-field {
+  margin-bottom: 12px;
+}
 
 .ck-label {
   display: block;
@@ -353,13 +416,18 @@ async function handleCheckin() {
   background: #f8fafc;
   padding: 0 14px 0 40px;
   font-size: 14px;
-  font-family: 'Sarabun', sans-serif;
+  font-family: "Sarabun", sans-serif;
   color: #0f172a;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
 }
 
-.ck-input::placeholder { color: #cbd5e1; }
+.ck-input::placeholder {
+  color: #cbd5e1;
+}
 
 .ck-input:focus {
   border-color: #2563eb;
@@ -367,7 +435,10 @@ async function handleCheckin() {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-.ck-input--center { text-align: center; padding-left: 14px; }
+.ck-input--center {
+  text-align: center;
+  padding-left: 14px;
+}
 
 .ck-row {
   display: grid;
@@ -400,7 +471,10 @@ async function handleCheckin() {
   gap: 10px;
 }
 
-.info-icon { font-size: 20px; flex-shrink: 0; }
+.info-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
 
 .info-title {
   font-size: 11px;
@@ -427,8 +501,11 @@ async function handleCheckin() {
   color: #fff;
   font-size: 15px;
   font-weight: 700;
-  font-family: 'Sarabun', sans-serif;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  font-family: "Sarabun", sans-serif;
+  transition:
+    background 0.15s,
+    transform 0.1s,
+    box-shadow 0.15s;
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
 }
 
@@ -438,7 +515,9 @@ async function handleCheckin() {
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
 }
 
-.ck-btn:active:not(:disabled) { transform: scale(0.99); }
+.ck-btn:active:not(:disabled) {
+  transform: scale(0.99);
+}
 
 .ck-btn:disabled {
   opacity: 0.65;
@@ -470,7 +549,8 @@ async function handleCheckin() {
 }
 
 .status-dot {
-  width: 8px; height: 8px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -499,12 +579,16 @@ async function handleCheckin() {
   transition: color 0.15s;
 }
 
-.back-link:hover { color: #334155; }
+.back-link:hover {
+  color: #334155;
+}
 
 /* Transition */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .fade-enter-from,
