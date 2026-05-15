@@ -222,7 +222,7 @@ async function handleCheckin() {
             <span class="info-icon">📍</span>
             <div>
               <p class="info-title">รัศมีที่อนุญาต</p>
-              <p class="info-value">50 เมตร</p>
+              <p class="info-value">20 เมตร</p>
             </div>
           </div>
         </div>
