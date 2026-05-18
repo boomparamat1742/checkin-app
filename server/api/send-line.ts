@@ -15,6 +15,16 @@ export default defineEventHandler(async () => {
     }),
   );
 
+  const day = thailandNow.getDay();
+
+  // ถ้าเป็นเสาร์หรืออาทิตย์ ไม่ต้องส่ง LINE
+  if (day === 0 || day === 6) {
+    return {
+      success: true,
+      message: "Weekend - no line notification",
+    };
+  }
+
   // เริ่มต้นวัน
   const today = new Date(thailandNow);
   today.setHours(0, 0, 0, 0);
