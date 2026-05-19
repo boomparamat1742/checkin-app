@@ -11,7 +11,7 @@ const statusType = ref<"success" | "error" | "">("");
 
 const TARGET_LAT = 17.614383;
 const TARGET_LNG = 103.649526;
-const ALLOWED_RADIUS = 20;
+const ALLOWED_RADIUS = 8;
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000;
