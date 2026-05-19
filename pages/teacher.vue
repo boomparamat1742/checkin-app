@@ -11,7 +11,7 @@ const statusType = ref<"success" | "error" | "">("");
 
 const TARGET_LAT = 17.614383;
 const TARGET_LNG = 103.649526;
-const ALLOWED_RADIUS = 8;
+const ALLOWED_RADIUS = 10;
 
 function getDeviceId() {
   let deviceId = localStorage.getItem("device_id");
