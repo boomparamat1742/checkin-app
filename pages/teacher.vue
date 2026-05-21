@@ -9,9 +9,9 @@ const loading = ref(false);
 const status = ref("");
 const statusType = ref<"success" | "error" | "">("");
 
-const TARGET_LAT = 17.614383;
-const TARGET_LNG = 103.649526;
-const ALLOWED_RADIUS = 10;
+const TARGET_LAT = 17.614395;
+const TARGET_LNG = 103.649520;
+const ALLOWED_RADIUS = 15;
 
 function getDeviceId() {
   let deviceId = localStorage.getItem("device_id");
