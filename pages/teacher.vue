@@ -265,7 +265,7 @@ async function handleCheckin() {
             <span class="info-icon">📍</span>
             <div>
               <p class="info-title">รัศมีที่อนุญาต</p>
-              <p class="info-value">10 เมตร</p>
+              <p class="info-value">15 เมตร</p>
             </div>
           </div>
         </div>
