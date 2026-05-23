@@ -10,8 +10,8 @@ const status = ref("");
 const statusType = ref<"success" | "error" | "">("");
 
 const TARGET_LAT = 17.614395;
-const TARGET_LNG = 103.649520;
-const ALLOWED_RADIUS = 15;
+const TARGET_LNG = 103.64952;
+const ALLOWED_RADIUS = 17;
 
 function getDeviceId() {
   let deviceId = localStorage.getItem("device_id");
@@ -105,7 +105,6 @@ async function getTeacherData() {
     statusType.value = "error";
   }
 }
-
 async function handleCheckin() {
   if (!teacherNumber.value) {
     status.value = "กรุณากรอกเลขที่ครู";
@@ -123,18 +122,18 @@ async function handleCheckin() {
     statusType.value = "error";
     return;
   }
+
   loading.value = true;
+  status.value = "กำลังรอสัญญาณ GPS...";
+  statusType.value = "";
 
   const deviceId = getDeviceId();
 
-  // วันปัจจุบัน
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  // ตรวจสอบว่า device นี้เช็คอินแล้วหรือยัง
   const { data: existing } = await $supabase
     .from("checkins")
     .select("id")
@@ -145,24 +144,34 @@ async function handleCheckin() {
 
   if (existing) {
     status.value = "อุปกรณ์นี้เช็คชื่อแล้ววันนี้";
-
     statusType.value = "error";
-
     loading.value = false;
-
     return;
   }
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
+
+  // ✅ ดึง GPS ใหม่ทุกครั้ง ไม่ใช้ cache
+  getFreshPosition()
+    .then(async (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy; // ความแม่นยำของ GPS (เมตร)
       const dist = haversine(lat, lng, TARGET_LAT, TARGET_LNG);
-      if (dist > ALLOWED_RADIUS) {
-        status.value = `อยู่นอกพื้นที่ (${(dist / 1000).toFixed(2)} กิโลเมตร)`;
+
+      // ✅ ถ้า GPS accuracy แย่กว่า radius ที่กำหนด แจ้งเตือน
+      if (accuracy > ALLOWED_RADIUS) {
+        status.value = `สัญญาณ GPS ไม่แม่นยำพอ (±${Math.round(accuracy)}m) กรุณาลองใหม่`;
         statusType.value = "error";
         loading.value = false;
         return;
       }
+
+      if (dist > ALLOWED_RADIUS) {
+        status.value = `อยู่นอกพื้นที่ (${Math.round(dist)} เมตร จากจุดเช็คชื่อ)`;
+        statusType.value = "error";
+        loading.value = false;
+        return;
+      }
+
       const { error } = await $supabase.from("checkins").insert({
         user_type: "teacher",
         checkin_status: checkin.status,
@@ -175,6 +184,7 @@ async function handleCheckin() {
         checkin_at: new Date().toISOString(),
         device_id: deviceId,
       });
+
       if (error) {
         status.value = "บันทึกข้อมูลไม่สำเร็จ";
         statusType.value = "error";
@@ -186,15 +196,118 @@ async function handleCheckin() {
         teacherPosition.value = "";
       }
       loading.value = false;
-    },
-    () => {
-      status.value = "ไม่สามารถเข้าถึง GPS";
+    })
+    .catch((err: GeolocationPositionError) => {
+      const msg: Record<number, string> = {
+        1: "ไม่ได้รับอนุญาตให้เข้าถึง GPS กรุณาเปิดสิทธิ์",
+        2: "ไม่พบสัญญาณ GPS กรุณาออกไปที่โล่ง",
+        3: "GPS ใช้เวลานานเกินไป กรุณาลองใหม่",
+      };
+      status.value = msg[err.code] ?? "ไม่สามารถเข้าถึง GPS";
       statusType.value = "error";
       loading.value = false;
-    },
-    { enableHighAccuracy: true },
-  );
+    });
 }
+
+// ✅ ฟังก์ชันดึง GPS ใหม่จริงๆ ไม่ใช้ cache พร้อม timeout
+function getFreshPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      maximumAge: 0, // ❌ ห้ามใช้ cached position เด็ดขาด
+      timeout: 15000, // รอ GPS สูงสุด 15 วินาที
+    });
+  });
+}
+// async function handleCheckin() {
+//   if (!teacherNumber.value) {
+//     status.value = "กรุณากรอกเลขที่ครู";
+//     statusType.value = "error";
+//     return;
+//   }
+//   if (!fullname.value) {
+//     status.value = "ไม่พบข้อมูลครู";
+//     statusType.value = "error";
+//     return;
+//   }
+//   const checkin = getTeacherCheckinStatus();
+//   if (!checkin.allow) {
+//     status.value = checkin.message;
+//     statusType.value = "error";
+//     return;
+//   }
+//   loading.value = true;
+
+//   const deviceId = getDeviceId();
+
+//   // วันปัจจุบัน
+//   const today = new Date();
+//   today.setHours(0, 0, 0, 0);
+
+//   const tomorrow = new Date(today);
+//   tomorrow.setDate(tomorrow.getDate() + 1);
+
+//   // ตรวจสอบว่า device นี้เช็คอินแล้วหรือยัง
+//   const { data: existing } = await $supabase
+//     .from("checkins")
+//     .select("id")
+//     .eq("device_id", deviceId)
+//     .gte("checkin_at", today.toISOString())
+//     .lt("checkin_at", tomorrow.toISOString())
+//     .maybeSingle();
+
+//   if (existing) {
+//     status.value = "อุปกรณ์นี้เช็คชื่อแล้ววันนี้";
+
+//     statusType.value = "error";
+
+//     loading.value = false;
+
+//     return;
+//   }
+//   navigator.geolocation.getCurrentPosition(
+//     async (pos) => {
+//       const lat = pos.coords.latitude;
+//       const lng = pos.coords.longitude;
+//       const dist = haversine(lat, lng, TARGET_LAT, TARGET_LNG);
+//       if (dist > ALLOWED_RADIUS) {
+//         status.value = `อยู่นอกพื้นที่ (${(dist / 1000).toFixed(2)} กิโลเมตร)`;
+//         statusType.value = "error";
+//         loading.value = false;
+//         return;
+//       }
+//       const { error } = await $supabase.from("checkins").insert({
+//         user_type: "teacher",
+//         checkin_status: checkin.status,
+//         full_name: fullname.value,
+//         teacher_number: teacherNumber.value,
+//         teacher_position: teacherPosition.value,
+//         latitude: lat,
+//         longitude: lng,
+//         distance: dist,
+//         checkin_at: new Date().toISOString(),
+//         device_id: deviceId,
+//       });
+//       if (error) {
+//         status.value = "บันทึกข้อมูลไม่สำเร็จ";
+//         statusType.value = "error";
+//       } else {
+//         status.value = checkin.message;
+//         statusType.value = "success";
+//         fullname.value = "";
+//         teacherNumber.value = "";
+//         teacherPosition.value = "";
+//       }
+//       loading.value = false;
+//     },
+//     () => {
+//       status.value = "ไม่สามารถเข้าถึง GPS";
+//       statusType.value = "error";
+//       loading.value = false;
+//     },
+//     { enableHighAccuracy: true },
+//   );
+// }
 </script>
 
 <template>
@@ -265,7 +378,7 @@ async function handleCheckin() {
             <span class="info-icon">📍</span>
             <div>
               <p class="info-title">รัศมีที่อนุญาต</p>
-              <p class="info-value">15 เมตร</p>
+              <p class="info-value">17 เมตร</p>
             </div>
           </div>
         </div>
