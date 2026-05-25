@@ -11,7 +11,7 @@ const statusType = ref<"success" | "error" | "">("");
 
 const TARGET_LAT = 17.614395;
 const TARGET_LNG = 103.64952;
-const ALLOWED_RADIUS = 17; // ✅ ขยายจาก 15 → 50m (GPS มือถือมี error ~10-30m)
+const ALLOWED_RADIUS = 30; // ✅ ขยายจาก 15 → 50m (GPS มือถือมี error ~10-30m)
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000;
@@ -240,7 +240,7 @@ async function handleCheckin() {
             <span class="info-icon">📍</span>
             <div>
               <p class="info-title">รัศมีที่อนุญาต</p>
-              <p class="info-value">17 เมตร</p>
+              <p class="info-value">30 เมตร</p>
             </div>
           </div>
         </div>

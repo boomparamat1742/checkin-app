@@ -11,7 +11,7 @@ const statusType = ref<"success" | "error" | "">("");
 
 const TARGET_LAT = 17.614395;
 const TARGET_LNG = 103.64952;
-const ALLOWED_RADIUS = 17;
+const ALLOWED_RADIUS = 30;
 
 function getDeviceId() {
   let deviceId = localStorage.getItem("device_id");
@@ -378,7 +378,7 @@ function getFreshPosition(): Promise<GeolocationPosition> {
             <span class="info-icon">📍</span>
             <div>
               <p class="info-title">รัศมีที่อนุญาต</p>
-              <p class="info-value">17 เมตร</p>
+              <p class="info-value">30 เมตร</p>
             </div>
           </div>
         </div>
