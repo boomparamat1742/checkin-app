@@ -115,6 +115,9 @@ function getDeviceId() {
   return deviceId;
 }
 
+const delay = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 async function handleCheckin() {
   if (!fullname.value || !classroom.value || !studentnum.value) {
     status.value = "กรุณากรอกข้อมูลให้ครบ";
@@ -131,6 +134,8 @@ async function handleCheckin() {
   }
 
   loading.value = true;
+  
+  await delay(2000);
 
   const deviceId = getDeviceId();
 

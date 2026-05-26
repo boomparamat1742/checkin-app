@@ -168,6 +168,8 @@ async function getTeacherData() {
     statusType.value = "error";
   }
 }
+const delay = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 async function handleCheckin() {
   if (!teacherNumber.value) {
@@ -187,6 +189,8 @@ async function handleCheckin() {
     return;
   }
   loading.value = true;
+
+  await delay(2000);
 
   const deviceId = getDeviceId();
 
