@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Geodesic } from "geographiclib";
 const { $supabase } = useNuxtApp();
 
 const fullname = ref("");
@@ -26,90 +25,16 @@ function getDeviceId() {
   return deviceId;
 }
 
-// function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
-//   const R = 6371000;
-//   const dLat = ((lat2 - lat1) * Math.PI) / 180;
-//   const dLon = ((lon2 - lon1) * Math.PI) / 180;
-//   const a =
-//     Math.sin(dLat / 2) ** 2 +
-//     Math.cos((lat1 * Math.PI) / 180) *
-//       Math.cos((lat2 * Math.PI) / 180) *
-//       Math.sin(dLon / 2) ** 2;
-//   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-// }
-
-// function vincentyDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-//   // รัศมีของโลกตามมาตรฐาน WGS-84
-//   const a = 6378137.0; // รัศมีที่เส้นศูนย์สูตร (เมตร)
-//   const b = 6356752.314245; // รัศมีที่ขั้วโลก (เมตร)
-//   const f = 1 / 298.257223563; // ความแป้นของโลก
-
-//   const toRadians = (deg: number) => (deg * Math.PI) / 180;
-
-//   const L = toRadians(lon2 - lon1);
-//   const U1 = Math.atan((1 - f) * Math.tan(toRadians(lat1)));
-//   const U2 = Math.atan((1 - f) * Math.tan(toRadians(lat2)));
-
-//   const sinU1 = Math.sin(U1), cosU1 = Math.cos(U1);
-//   const sinU2 = Math.sin(U2), cosU2 = Math.cos(U2);
-
-//   let lambda = L;
-//   let lambdaP: number;
-//   let iterLimit = 100;
-//   let cosSqAlpha = 0, sinSigma = 0, cos2SigmaM = 0, cosSigma = 0, sigma = 0;
-
-//   do {
-//     const sinLambda = Math.sin(lambda);
-//     const cosLambda = Math.cos(lambda);
-
-//     sinSigma = Math.sqrt(
-//       (cosU2 * sinLambda) ** 2 +
-//       (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda) ** 2
-//     );
-
-//     if (sinSigma === 0) return 0; // จุดเดียวกัน
-
-//     cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda;
-//     sigma = Math.atan2(sinSigma, cosSigma);
-
-//     const sinAlpha = (cosU1 * cosU2 * sinLambda) / sinSigma;
-//     cosSqAlpha = 1 - sinAlpha ** 2;
-
-//     // จัดการกรณีจุดอยู่บนเส้นศูนย์สูตร
-//     cos2SigmaM = cosSqAlpha !== 0 ? cosSigma - (2 * sinU1 * sinU2) / cosSqAlpha : 0;
-
-//     const C = (f / 16) * cosSqAlpha * (4 + f * (4 - 3 * cosSqAlpha));
-//     lambdaP = lambda;
-//     lambda = L + (1 - C) * f * sinAlpha * (
-//       sigma + C * sinSigma * (cos2SigmaM + C * cosSigma * (-1 + 2 * cos2SigmaM ** 2))
-//     );
-//   } while (Math.abs(lambda - lambdaP) > 1e-12 && --iterLimit > 0);
-
-//   if (iterLimit === 0) return NaN; // คำนวณไม่ลู่เข้าหาผลลัพธ์ (กรณีจุดตรงข้ามโลกกันพอดี)
-
-//   const uSq = (cosSqAlpha * (a ** 2 - b ** 2)) / (b ** 2);
-//   const A = 1 + (uSq / 16384) * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)));
-//   const B = (uSq / 1024) * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)));
-//   const deltaSigma = B * sinSigma * (
-//     cos2SigmaM + (B / 4) * (
-//       cosSigma * (-1 + 2 * cos2SigmaM ** 2) -
-//       (B / 6) * cos2SigmaM * (-3 + 4 * sinSigma ** 2) * (-3 + 4 * cos2SigmaM ** 2)
-//     )
-//   );
-
-//   const distance = b * A * (sigma - deltaSigma);
-//   return distance; // ผลลัพธ์เป็นเมตร
-// }
-
-function calculateDistanceMeters(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const result = Geodesic.WGS84.Inverse(lat1, lon1, lat2, lon2);
-
-  return result.s12 ?? 0;
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function getTeacherCheckinStatus() {
@@ -180,7 +105,6 @@ async function getTeacherData() {
     statusType.value = "error";
   }
 }
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function handleCheckin() {
   if (!teacherNumber.value) {
@@ -200,8 +124,6 @@ async function handleCheckin() {
     return;
   }
   loading.value = true;
-
-  await delay(2000);
 
   const deviceId = getDeviceId();
 
@@ -234,7 +156,7 @@ async function handleCheckin() {
     async (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      const dist = calculateDistanceMeters(lat, lng, TARGET_LAT, TARGET_LNG);
+      const dist = haversine(lat, lng, TARGET_LAT, TARGET_LNG);
       if (dist > ALLOWED_RADIUS) {
         status.value = `อยู่นอกพื้นที่ (${(dist / 1000).toFixed(2)} กิโลเมตร)`;
         statusType.value = "error";
@@ -270,7 +192,7 @@ async function handleCheckin() {
       statusType.value = "error";
       loading.value = false;
     },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 2000 },
+    { enableHighAccuracy: true },
   );
 }
 </script>
