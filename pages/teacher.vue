@@ -9,32 +9,15 @@ const loading = ref(false);
 const status = ref("");
 const statusType = ref<"success" | "error" | "">("");
 
-const TARGET_LAT = 17.614383;
-const TARGET_LNG = 103.649526;
-const ALLOWED_RADIUS = 20;
+const ALLOWED_RADIUS = 30;
 
 function getDeviceId() {
   let deviceId = localStorage.getItem("device_id");
-
   if (!deviceId) {
     deviceId = crypto.randomUUID() + "-" + Date.now();
-
     localStorage.setItem("device_id", deviceId);
   }
-
   return deviceId;
-}
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function getTeacherCheckinStatus() {
@@ -152,48 +135,48 @@ async function handleCheckin() {
 
     return;
   }
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const dist = haversine(lat, lng, TARGET_LAT, TARGET_LNG);
-      if (dist > ALLOWED_RADIUS) {
-        status.value = `อยู่นอกพื้นที่ (${(dist / 1000).toFixed(2)} กิโลเมตร)`;
-        statusType.value = "error";
-        loading.value = false;
-        return;
-      }
-      const { error } = await $supabase.from("checkins").insert({
-        user_type: "teacher",
-        checkin_status: checkin.status,
-        full_name: fullname.value,
-        teacher_number: teacherNumber.value,
-        teacher_position: teacherPosition.value,
-        latitude: lat,
-        longitude: lng,
-        distance: dist,
-        checkin_at: new Date().toISOString(),
-        device_id: deviceId,
-      });
-      if (error) {
-        status.value = "บันทึกข้อมูลไม่สำเร็จ";
-        statusType.value = "error";
-      } else {
-        status.value = checkin.message;
-        statusType.value = "success";
-        fullname.value = "";
-        teacherNumber.value = "";
-        teacherPosition.value = "";
-      }
-      loading.value = false;
-    },
-    () => {
-      status.value = "ไม่สามารถเข้าถึง GPS";
+  try {
+    const gps = await collectGps((msg) => {
+      status.value = msg;
+      statusType.value = "";
+    });
+
+    if (gps.distance > ALLOWED_RADIUS) {
+      status.value = `อยู่นอกพื้นที่ (${gps.distance.toFixed(1)} เมตร)`;
       statusType.value = "error";
       loading.value = false;
-    },
-    { enableHighAccuracy: true },
-  );
+      return;
+    }
+
+    const { error } = await $supabase.from("checkins").insert({
+      user_type: "teacher",
+      checkin_status: checkin.status,
+      full_name: fullname.value,
+      teacher_number: teacherNumber.value,
+      teacher_position: teacherPosition.value,
+      latitude: gps.lat,
+      longitude: gps.lng,
+      distance: gps.distance,
+      gps_accuracy: gps.accuracy,
+      checkin_at: new Date().toISOString(),
+      device_id: deviceId,
+    });
+
+    if (error) {
+      status.value = "บันทึกข้อมูลไม่สำเร็จ";
+      statusType.value = "error";
+    } else {
+      status.value = checkin.message;
+      statusType.value = "success";
+      fullname.value = "";
+      teacherNumber.value = "";
+      teacherPosition.value = "";
+    }
+  } catch (e: any) {
+    status.value = e.message ?? "เกิดข้อผิดพลาด GPS";
+    statusType.value = "error";
+  }
+  loading.value = false;
 }
 </script>
 
@@ -265,7 +248,7 @@ async function handleCheckin() {
             <span class="info-icon">📍</span>
             <div>
               <p class="info-title">รัศมีที่อนุญาต</p>
-              <p class="info-value">20 เมตร</p>
+              <p class="info-value">30 เมตร</p>
             </div>
           </div>
         </div>

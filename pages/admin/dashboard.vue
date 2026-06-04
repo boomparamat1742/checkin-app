@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { saveAs } from "file-saver";
 
 definePageMeta({ middleware: ["admin"] });
@@ -12,7 +12,8 @@ const teacherRows = ref<any[]>([]);
 const teacherLoading = ref(false);
 const search = ref("");
 const activeTab = ref<"all" | "student" | "teacher">("all");
-const dashboardTab = ref<"checkins" | "teachers">("checkins");
+const classroomTab = ref<string>("all");
+const dashboardTab = ref<"checkins" | "teachers" | "admins">("checkins");
 
 const teacherForm = ref({
   id: null as number | null,
@@ -20,6 +21,42 @@ const teacherForm = ref({
   full_name: "",
   position_name: "",
 });
+
+// Admin management
+const adminUsers = ref<{ id: string; email: string; created_at: string }[]>([]);
+const adminLoading = ref(false);
+const adminForm = ref({ username: "", password: "" });
+const adminSaving = ref(false);
+const adminError = ref("");
+const currentUserId = ref("");
+
+// Confirm dialog
+const confirmDialog = ref({
+  show: false,
+  title: "",
+  message: "",
+  resolve: null as ((v: boolean) => void) | null,
+});
+
+function showConfirm(title: string, message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    confirmDialog.value = { show: true, title, message, resolve };
+  });
+}
+
+function onConfirmYes() {
+  confirmDialog.value.resolve?.(true);
+  confirmDialog.value.show = false;
+}
+
+function onConfirmNo() {
+  confirmDialog.value.resolve?.(false);
+  confirmDialog.value.show = false;
+}
+
+const CLASSROOMS = Array.from({ length: 6 }, (_, m) =>
+  Array.from({ length: 3 }, (_, r) => `ม.${m + 1}/${r + 1}`),
+).flat();
 
 async function loadData() {
   loading.value = true;
@@ -90,7 +127,8 @@ function editTeacher(item: any) {
 }
 
 async function deleteTeacher(id: number) {
-  if (!confirm("ต้องการลบข้อมูลครูรายนี้?")) return;
+  const ok = await showConfirm("ลบข้อมูลครู", "ต้องการลบข้อมูลครูรายนี้ใช่หรือไม่?");
+  if (!ok) return;
   const { error } = await $supabase.from("teachers").delete().eq("id", id);
   if (error) {
     alert("ลบข้อมูลไม่สำเร็จ");
@@ -108,34 +146,164 @@ function resetTeacherForm() {
   };
 }
 
+function applySheetStyle(ws: XLSX.WorkSheet, headers: string[], dataLen: number) {
+  // Column widths
+  const colWidths: Record<string, number> = {
+    ลำดับ: 6, ชื่อ: 28, ห้อง: 10, เลขที่: 8, ตำแหน่ง: 22,
+    เลขที่ครู: 10, สถานะ: 10, ระยะทาง: 12, "GPS Accuracy": 14, วันที่เวลา: 22,
+  };
+  ws["!cols"] = headers.map((h) => ({ wch: colWidths[h] ?? 16 }));
+
+  // Freeze header row
+  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+  // Style header row
+  for (let c = 0; c < headers.length; c++) {
+    const cellRef = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[cellRef]) continue;
+    ws[cellRef].s = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
+      fill: { fgColor: { rgb: "1D4ED8" }, patternType: "solid" },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: {
+        top: { style: "thin", color: { rgb: "93C5FD" } },
+        bottom: { style: "thin", color: { rgb: "93C5FD" } },
+        left: { style: "thin", color: { rgb: "93C5FD" } },
+        right: { style: "thin", color: { rgb: "93C5FD" } },
+      },
+    };
+  }
+
+  // Style data rows (alternating)
+  for (let r = 1; r <= dataLen; r++) {
+    const isEven = r % 2 === 0;
+    for (let c = 0; c < headers.length; c++) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+      if (!ws[cellRef]) continue;
+      ws[cellRef].s = {
+        fill: { fgColor: { rgb: isEven ? "EFF6FF" : "FFFFFF" }, patternType: "solid" },
+        alignment: { horizontal: c === 0 ? "center" : "left", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } },
+        },
+      };
+    }
+  }
+
+  // Row height
+  ws["!rows"] = [{ hpt: 28 }, ...Array(dataLen).fill({ hpt: 22 })];
+}
+
 function exportExcel() {
-  const exportData = rows.value.map((item, index) => ({
-    ลำดับ: index + 1,
-    ประเภท: item.user_type === "teacher" ? "ครู" : "นักเรียน",
-    ชื่อ: item.full_name || "-",
-    ห้อง: item.class_room || "-",
-    เลขที่นักเรียน: item.student_number || "-",
-    เลขที่ครู: item.teacher_number || "-",
-    ตำแหน่ง: item.teacher_position || "-",
-    สถานะ: item.checkin_status === "late" ? "มาสาย" : "ปกติ",
-    ระยะทาง: `${(item.distance || 0).toFixed(1)} m`,
-    วันที่เวลา: new Date(item.checkin_at).toLocaleString("th-TH"),
-  }));
-  const worksheet = XLSX.utils.json_to_sheet(exportData);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Checkins");
-  const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const now = new Date().toLocaleDateString("th-TH", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+
+  // --- Sheet: นักเรียน ---
+  const studentHeaders = ["ลำดับ", "ชื่อ", "ห้อง", "เลขที่", "สถานะ", "ระยะทาง", "GPS Accuracy", "วันที่เวลา"];
+  const studentData = rows.value
+    .filter((x) => x.user_type === "student")
+    .sort((a, b) => {
+      if (a.class_room !== b.class_room) return (a.class_room || "").localeCompare(b.class_room || "");
+      return Number(a.student_number) - Number(b.student_number);
+    })
+    .map((item, i) => ({
+      ลำดับ: i + 1,
+      ชื่อ: item.full_name || "-",
+      ห้อง: item.class_room || "-",
+      เลขที่: item.student_number || "-",
+      สถานะ: item.checkin_status === "late" ? "มาสาย" : "ปกติ",
+      ระยะทาง: `${(item.distance || 0).toFixed(1)} m`,
+      "GPS Accuracy": item.gps_accuracy ? `${Number(item.gps_accuracy).toFixed(0)} m` : "-",
+      วันที่เวลา: new Date(item.checkin_at).toLocaleString("th-TH"),
+    }));
+
+  const wsStudent = XLSX.utils.json_to_sheet(studentData, { header: studentHeaders });
+  applySheetStyle(wsStudent, studentHeaders, studentData.length);
+  XLSX.utils.book_append_sheet(workbook, wsStudent, "นักเรียน");
+
+  // --- Sheet: ครู ---
+  const teacherHeaders = ["ลำดับ", "เลขที่ครู", "ชื่อ", "ตำแหน่ง", "สถานะ", "ระยะทาง", "GPS Accuracy", "วันที่เวลา"];
+  const teacherData = rows.value
+    .filter((x) => x.user_type === "teacher")
+    .sort((a, b) => Number(a.teacher_number) - Number(b.teacher_number))
+    .map((item, i) => ({
+      ลำดับ: i + 1,
+      เลขที่ครู: item.teacher_number || "-",
+      ชื่อ: item.full_name || "-",
+      ตำแหน่ง: item.teacher_position || "-",
+      สถานะ: item.checkin_status === "late" ? "มาสาย" : "ปกติ",
+      ระยะทาง: `${(item.distance || 0).toFixed(1)} m`,
+      "GPS Accuracy": item.gps_accuracy ? `${Number(item.gps_accuracy).toFixed(0)} m` : "-",
+      วันที่เวลา: new Date(item.checkin_at).toLocaleString("th-TH"),
+    }));
+
+  const wsTeacher = XLSX.utils.json_to_sheet(teacherData, { header: teacherHeaders });
+  applySheetStyle(wsTeacher, teacherHeaders, teacherData.length);
+  XLSX.utils.book_append_sheet(workbook, wsTeacher, "ครู");
+
+  const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array", cellStyles: true });
   saveAs(
     new Blob([excelBuffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8",
     }),
-    "checkins.xlsx",
+    `checkins_${now}.xlsx`,
   );
 }
 
-function handleLogout() {
-  localStorage.removeItem("admin");
+async function handleLogout() {
+  const { $supabase } = useNuxtApp();
+  await $supabase.auth.signOut();
   navigateTo("/");
+}
+
+async function loadAdminUsers() {
+  adminLoading.value = true;
+  try {
+    adminUsers.value = await $fetch("/api/admin/users");
+  } catch {
+    adminUsers.value = [];
+  }
+  adminLoading.value = false;
+}
+
+async function createAdmin() {
+  if (!adminForm.value.username || !adminForm.value.password) {
+    adminError.value = "กรุณากรอกข้อมูลให้ครบ";
+    return;
+  }
+  adminSaving.value = true;
+  adminError.value = "";
+  try {
+    await $fetch("/api/admin/users", {
+      method: "POST",
+      body: adminForm.value,
+    });
+    adminForm.value = { username: "", password: "" };
+    await loadAdminUsers();
+  } catch (e: any) {
+    adminError.value = e?.data?.message ?? "สร้างผู้ใช้ไม่สำเร็จ";
+  }
+  adminSaving.value = false;
+}
+
+async function deleteAdmin(id: string, email: string) {
+  const name = email.replace("@checkin.local", "");
+  const ok = await showConfirm("ลบ Admin", `ต้องการลบบัญชี "${name}" ใช่หรือไม่?`);
+  if (!ok) return;
+  try {
+    await $fetch("/api/admin/users", {
+      method: "DELETE",
+      body: { id, requesterId: currentUserId.value },
+    });
+    await loadAdminUsers();
+  } catch (e: any) {
+    alert(e?.data?.message ?? "ลบผู้ใช้ไม่สำเร็จ");
+  }
 }
 
 const filteredRows = computed(() => {
@@ -143,14 +311,24 @@ const filteredRows = computed(() => {
   return rows.value.filter((x) => {
     const matchTab =
       activeTab.value === "all" || x.user_type === activeTab.value;
+    const matchClassroom =
+      activeTab.value !== "student" ||
+      classroomTab.value === "all" ||
+      x.class_room === classroomTab.value;
     const matchSearch =
       x.full_name?.toLowerCase().includes(keyword) ||
       x.class_room?.toLowerCase().includes(keyword) ||
       x.teacher_number?.toLowerCase().includes(keyword) ||
       x.student_number?.toLowerCase().includes(keyword);
-    return matchTab && matchSearch;
+    return matchTab && matchClassroom && matchSearch;
   });
 });
+
+function classroomCount(room: string) {
+  return rows.value.filter(
+    (x) => x.user_type === "student" && x.class_room === room,
+  ).length;
+}
 
 const todayCount = computed(() => {
   const today = new Date().toDateString();
@@ -173,7 +351,17 @@ const teacherCheckinCount = computed(
   () => rows.value.filter((x) => x.user_type === "teacher").length,
 );
 
+watch(activeTab, () => {
+  classroomTab.value = "all";
+});
+
+watch(dashboardTab, (tab) => {
+  if (tab === "admins" && adminUsers.value.length === 0) loadAdminUsers();
+});
+
 onMounted(async () => {
+  const { data } = await $supabase.auth.getUser();
+  currentUserId.value = data.user?.id ?? "";
   await loadData();
   await loadTeachers();
 });
@@ -218,6 +406,13 @@ onMounted(async () => {
         >
           👨‍🏫 จัดการข้อมูลครู
           <span class="main-tab-count">{{ teacherRows.length }}</span>
+        </button>
+        <button
+          class="main-tab"
+          :class="{ 'main-tab--active': dashboardTab === 'admins' }"
+          @click="dashboardTab = 'admins'"
+        >
+          🔐 จัดการ Admin
         </button>
       </div>
 
@@ -276,6 +471,32 @@ onMounted(async () => {
               {{ avgDistance }}<span class="stat-unit">m</span>
             </h2>
             <p class="stat-label">ระยะทางเฉลี่ย</p>
+          </div>
+        </div>
+
+        <!-- CLASSROOM SUB-TABS (แสดงเมื่อกรองนักเรียน) -->
+        <div v-if="activeTab === 'student'" class="classroom-tab-wrap">
+          <div class="classroom-tab-group">
+            <button
+              class="classroom-tab"
+              :class="{ 'classroom-tab--active': classroomTab === 'all' }"
+              @click="classroomTab = 'all'"
+            >
+              ทั้งหมด
+              <span class="classroom-count">{{ studentCount }}</span>
+            </button>
+            <button
+              v-for="room in CLASSROOMS"
+              :key="room"
+              class="classroom-tab"
+              :class="{ 'classroom-tab--active': classroomTab === room }"
+              @click="classroomTab = room"
+            >
+              {{ room }}
+              <span v-if="classroomCount(room) > 0" class="classroom-count">
+                {{ classroomCount(room) }}
+              </span>
+            </button>
           </div>
         </div>
 
@@ -401,6 +622,86 @@ onMounted(async () => {
           </div>
           <div v-if="!loading && filteredRows.length > 0" class="table-footer">
             แสดง {{ filteredRows.length }} จาก {{ rows.length }} รายการ
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ADMINS TAB ===== -->
+      <div v-if="dashboardTab === 'admins'">
+        <!-- FORM -->
+        <div class="form-card">
+          <div class="form-card-header">
+            <div class="form-header-left">
+              <div class="form-icon">➕</div>
+              <div>
+                <h3 class="form-title">เพิ่ม Admin</h3>
+                <p class="form-sub">สร้างบัญชีผู้ดูแลระบบใหม่</p>
+              </div>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">ชื่อผู้ใช้ <span class="required">*</span></label>
+              <input v-model="adminForm.username" class="form-input" placeholder="เช่น admin2" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">รหัสผ่าน <span class="required">*</span></label>
+              <input v-model="adminForm.password" type="password" class="form-input" placeholder="••••••••" />
+            </div>
+            <div class="form-field form-field--action">
+              <label class="form-label">&nbsp;</label>
+              <button class="btn-save" @click="createAdmin" :disabled="adminSaving">
+                {{ adminSaving ? "⏳ กำลังสร้าง..." : "➕ สร้าง Admin" }}
+              </button>
+            </div>
+          </div>
+          <div v-if="adminError" class="admin-error">⚠️ {{ adminError }}</div>
+        </div>
+
+        <!-- LIST -->
+        <div class="table-card">
+          <div class="table-card-header">
+            <h3 class="table-card-title">รายชื่อ Admin ทั้งหมด</h3>
+            <span class="teacher-total-badge">{{ adminUsers.length }} คน</span>
+          </div>
+          <div v-if="adminLoading" class="table-state">
+            <div class="spinner" />
+            <p>กำลังโหลด...</p>
+          </div>
+          <div v-else-if="adminUsers.length === 0" class="table-state">
+            <p class="empty-icon">🔐</p>
+            <p>ยังไม่มี Admin</p>
+          </div>
+          <div v-else class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>ชื่อผู้ใช้</th>
+                  <th>วันที่สร้าง</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(u, i) in adminUsers" :key="u.id">
+                  <td class="td-index">{{ i + 1 }}</td>
+                  <td class="td-name">{{ u.email.replace("@checkin.local", "") }}</td>
+                  <td class="td-time">{{ new Date(u.created_at).toLocaleString("th-TH") }}</td>
+                  <td>
+                    <span v-if="u.id === currentUserId" class="badge badge--green">
+                      ✅ บัญชีปัจจุบัน
+                    </span>
+                    <button
+                      v-else
+                      class="btn-delete"
+                      @click="deleteAdmin(u.id, u.email)"
+                    >
+                      🗑️ ลบ
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -534,6 +835,23 @@ onMounted(async () => {
       </div>
     </div>
   </div>
+
+  <!-- CONFIRM DIALOG -->
+  <teleport to="body">
+    <transition name="modal-fade">
+      <div v-if="confirmDialog.show" class="modal-backdrop" @click.self="onConfirmNo">
+        <div class="modal-box">
+          <div class="modal-icon">⚠️</div>
+          <h3 class="modal-title">{{ confirmDialog.title }}</h3>
+          <p class="modal-message">{{ confirmDialog.message }}</p>
+          <div class="modal-actions">
+            <button class="modal-btn modal-btn--cancel" @click="onConfirmNo">ยกเลิก</button>
+            <button class="modal-btn modal-btn--confirm" @click="onConfirmYes">ยืนยัน</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </teleport>
 </template>
 
 <style scoped>
@@ -1289,6 +1607,175 @@ onMounted(async () => {
 .btn-delete:hover {
   background: #fecaca;
   transform: translateY(-1px);
+}
+
+/* CLASSROOM TABS */
+.classroom-tab-wrap {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+.classroom-tab-group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.classroom-tab {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: "Sarabun", sans-serif;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.classroom-tab:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.classroom-tab--active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.classroom-count {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255,255,255,0.25);
+  border-radius: 20px;
+  padding: 1px 6px;
+}
+
+.classroom-tab:not(.classroom-tab--active) .classroom-count {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* ADMIN ERROR */
+.admin-error {
+  margin: 0 1.25rem 1rem;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* CONFIRM MODAL */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 18px;
+  padding: 2rem 1.75rem 1.5rem;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+  text-align: center;
+}
+
+.modal-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.modal-message {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 1.5rem;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 46px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: "Sarabun", sans-serif;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.modal-btn--cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.modal-btn--cancel:hover {
+  background: #e2e8f0;
+}
+
+.modal-btn--confirm {
+  background: #ef4444;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.modal-btn--confirm:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-fade-enter-active .modal-box,
+.modal-fade-leave-active .modal-box {
+  transition: transform 0.2s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-fade-enter-from .modal-box {
+  transform: scale(0.95) translateY(8px);
 }
 
 /* RESPONSIVE */

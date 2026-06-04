@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const { $supabase } = useNuxtApp();
 
-const email = ref("");
+const username = ref("");
 const password = ref("");
 const loading = ref(false);
 const errorText = ref("");
@@ -10,19 +10,18 @@ async function handleLogin() {
   loading.value = true;
   errorText.value = "";
 
-  const { data, error } = await $supabase
-    .from("admins")
-    .select("*")
-    .eq("email", email.value)
-    .eq("password", password.value);
+  const email = `${username.value.trim().toLowerCase()}@checkin.local`;
 
-  if (error || !data || data.length === 0) {
-    errorText.value = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+  const { error } = await $supabase.auth.signInWithPassword({
+    email,
+    password: password.value,
+  });
+
+  if (error) {
+    errorText.value = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
     loading.value = false;
     return;
   }
-
-  localStorage.setItem("admin", JSON.stringify(data[0]));
 
   navigateTo("/admin/dashboard");
 }
@@ -48,15 +47,16 @@ async function handleLogin() {
       <div class="ck-body">
         <p class="ck-section-label">ข้อมูลผู้ดูแลระบบ</p>
 
-        <!-- Email -->
+        <!-- Username -->
         <div class="ck-field">
-          <label class="ck-label">อีเมล</label>
+          <label class="ck-label">ชื่อผู้ใช้</label>
           <input
-            v-model="email"
-            type="email"
-            placeholder="admin@school.ac.th"
+            v-model="username"
+            type="text"
+            placeholder="admin"
             class="ck-input"
             :disabled="loading"
+            @keyup.enter="handleLogin"
           />
         </div>
 

@@ -1,9 +1,9 @@
-export default defineNuxtRouteMiddleware(() => {
-  if (process.client) {
-    const admin = localStorage.getItem('admin')
+export default defineNuxtRouteMiddleware(async () => {
+  const { $supabase } = useNuxtApp();
 
-    if (!admin) {
-      return navigateTo('/admin/login')
-    }
+  const { data } = await $supabase.auth.getSession();
+
+  if (!data.session) {
+    return navigateTo("/admin/login");
   }
-})
+});
