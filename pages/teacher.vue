@@ -20,15 +20,6 @@ function getDeviceId() {
   return deviceId;
 }
 
-// กรอกได้แค่ตัวเลข
-function onTeacherNumberInput(e: Event) {
-  const target = e.target as HTMLInputElement;
-  const v = target.value.replace(/[^0-9]/g, "");
-  teacherNumber.value = v;
-  target.value = v;
-  getTeacherData();
-}
-
 function getTeacherCheckinStatus() {
   const now = new Date();
 
@@ -76,7 +67,7 @@ async function getTeacherData() {
   const { data, error } = await $supabase
     .from("teachers")
     .select("teacher_number, full_name, position_name")
-    .eq("teacher_number", String(teacherNumber.value).trim())
+    .eq("teacher_number", teacherNumber.value.trim())
     .maybeSingle();
   if (error) {
     fullname.value = "";
@@ -161,7 +152,7 @@ async function handleCheckin() {
       user_type: "teacher",
       checkin_status: checkin.status,
       full_name: fullname.value,
-      teacher_number: String(teacherNumber.value).trim(),
+      teacher_number: teacherNumber.value,
       teacher_position: teacherPosition.value,
       latitude: gps.lat,
       longitude: gps.lng,
@@ -218,10 +209,9 @@ async function handleCheckin() {
             <input
               v-model="teacherNumber"
               type="text"
-              inputmode="numeric"
               class="ck-input"
               placeholder="เช่น 1"
-              @input="onTeacherNumberInput"
+              @input="getTeacherData"
             />
           </div>
         </div>
