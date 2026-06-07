@@ -1,7 +1,7 @@
 const TARGET_LAT = 17.614378;
 const TARGET_LNG = 103.649527;
 const MAX_POSITION_AGE = 10000;
-const GPS_COLLECT_MS = 20000; // เก็บนานขึ้นสำหรับสภาพแวดล้อมใต้โดม
+const GPS_COLLECT_MS = 10000; // เก็บนานขึ้นสำหรับสภาพแวดล้อมใต้โดม
 
 export interface GpsResult {
   lat: number;
@@ -100,7 +100,7 @@ export function collectGps(
         clearTimeout(timeout);
         reject(new Error("ไม่สามารถเข้าถึง GPS"));
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_COLLECT_MS + 3000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_COLLECT_MS + 2000 },
     );
 
     void timeout;
