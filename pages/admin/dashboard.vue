@@ -55,7 +55,7 @@ function onConfirmNo() {
 }
 
 const CLASSROOMS = Array.from({ length: 6 }, (_, m) =>
-  Array.from({ length: 3 }, (_, r) => `ม.${m + 1}/${r + 1}`),
+  Array.from({ length: 3 }, (_, r) => `${m + 1}/${r + 1}`),
 ).flat();
 
 async function loadData() {

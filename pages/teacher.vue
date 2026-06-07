@@ -20,6 +20,15 @@ function getDeviceId() {
   return deviceId;
 }
 
+// กรอกได้แค่ตัวเลข
+function onTeacherNumberInput(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const v = target.value.replace(/[^0-9]/g, "");
+  teacherNumber.value = v;
+  target.value = v;
+  getTeacherData();
+}
+
 function getTeacherCheckinStatus() {
   const now = new Date();
 
@@ -209,9 +218,10 @@ async function handleCheckin() {
             <input
               v-model="teacherNumber"
               type="text"
+              inputmode="numeric"
               class="ck-input"
               placeholder="เช่น 1"
-              @input="getTeacherData"
+              @input="onTeacherNumberInput"
             />
           </div>
         </div>

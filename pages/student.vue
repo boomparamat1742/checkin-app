@@ -11,6 +11,34 @@ const statusType = ref<"success" | "error" | "">("");
 
 const ALLOWED_RADIUS = 30;
 
+// ห้องที่อนุญาต: 1/1 - 6/3
+const VALID_CLASSROOMS = Array.from({ length: 6 }, (_, m) =>
+  Array.from({ length: 3 }, (_, r) => `${m + 1}/${r + 1}`),
+).flat();
+
+function isValidClassroom(value: string) {
+  return VALID_CLASSROOMS.includes(value);
+}
+
+// กรอกได้แค่ตัวเลขและ / (รูปแบบ เช่น 1/1)
+function onClassroomInput(e: Event) {
+  const target = e.target as HTMLInputElement;
+  let v = target.value.replace(/[^0-9/]/g, "");
+  // อนุญาต / ได้ครั้งเดียว
+  const parts = v.split("/");
+  if (parts.length > 2) v = parts[0] + "/" + parts.slice(1).join("");
+  classroom.value = v;
+  target.value = v;
+}
+
+// กรอกได้แค่ตัวเลข
+function onStudentNumInput(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const v = target.value.replace(/[^0-9]/g, "");
+  studentnum.value = v;
+  target.value = v;
+}
+
 function getStudentCheckinStatus() {
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -41,6 +69,12 @@ function getDeviceId() {
 async function handleCheckin() {
   if (!fullname.value || !classroom.value || !studentnum.value) {
     status.value = "กรุณากรอกข้อมูลให้ครบ";
+    statusType.value = "error";
+    return;
+  }
+
+  if (!isValidClassroom(classroom.value)) {
+    status.value = "ชั้นไม่ถูกต้อง (กรอก 1/1 ถึง 6/3)";
     statusType.value = "error";
     return;
   }
@@ -168,8 +202,11 @@ async function handleCheckin() {
               <input
                 v-model="classroom"
                 type="text"
+                inputmode="numeric"
+                maxlength="3"
                 class="ck-input"
-                placeholder="เช่น ม.6/1"
+                placeholder="เช่น 1/1"
+                @input="onClassroomInput"
               />
             </div>
           </div>
@@ -180,8 +217,10 @@ async function handleCheckin() {
               <input
                 v-model="studentnum"
                 type="text"
+                inputmode="numeric"
                 class="ck-input ck-input--center"
                 placeholder="12"
+                @input="onStudentNumInput"
               />
             </div>
           </div>
