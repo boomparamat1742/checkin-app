@@ -76,7 +76,7 @@ async function getTeacherData() {
   const { data, error } = await $supabase
     .from("teachers")
     .select("teacher_number, full_name, position_name")
-    .eq("teacher_number", teacherNumber.value.trim())
+    .eq("teacher_number", String(teacherNumber.value).trim())
     .maybeSingle();
   if (error) {
     fullname.value = "";
@@ -161,7 +161,7 @@ async function handleCheckin() {
       user_type: "teacher",
       checkin_status: checkin.status,
       full_name: fullname.value,
-      teacher_number: teacherNumber.value,
+      teacher_number: String(teacherNumber.value).trim(),
       teacher_position: teacherPosition.value,
       latitude: gps.lat,
       longitude: gps.lng,
