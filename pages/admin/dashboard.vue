@@ -60,12 +60,12 @@ const CLASSROOMS = Array.from({ length: 6 }, (_, m) =>
 
 async function loadData() {
   loading.value = true;
-  const { data, error } = await $supabase
-    .from("checkins")
-    .select("*")
-    .order("checkin_at", { ascending: false });
-  if (error) console.log(error);
-  rows.value = data || [];
+  try {
+    rows.value = await $fetch<any[]>("/api/admin/checkins");
+  } catch (e) {
+    console.error(e);
+    rows.value = [];
+  }
   loading.value = false;
 }
 
