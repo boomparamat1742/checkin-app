@@ -1,0 +1,12 @@
+/* รีเซ็ตค่าเริ่มต้นของเบราว์เซอร์ ให้พื้นหลังของแต่ละหน้าเต็มจอ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}

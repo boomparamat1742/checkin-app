@@ -1,5 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
+  css: ["~/assets/css/global.css"],
+
   runtimeConfig: {
     // private
     supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY,
