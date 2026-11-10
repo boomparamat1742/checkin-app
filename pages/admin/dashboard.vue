@@ -58,10 +58,46 @@ const CLASSROOMS = Array.from({ length: 6 }, (_, m) =>
   Array.from({ length: 3 }, (_, r) => `${m + 1}/${r + 1}`),
 ).flat();
 
+// วันที่ในรูปแบบ YYYY-MM-DD ตามเวลาท้องถิ่น (สำหรับ <input type="date">)
+function toDateInput(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const todayStr = toDateInput(new Date());
+const dateFrom = ref(todayStr);
+const dateTo = ref(todayStr);
+const dateError = ref("");
+
+// "YYYY-MM-DD" → Date เที่ยงคืนเวลาท้องถิ่น
+function parseDateInput(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+}
+
 async function loadData() {
+  dateError.value = "";
+  if (!dateFrom.value || !dateTo.value) {
+    dateError.value = "กรุณาเลือกวันที่ให้ครบ";
+    return;
+  }
+  if (dateFrom.value > dateTo.value) {
+    dateError.value = "วันเริ่มต้องไม่เกินวันสิ้นสุด";
+    return;
+  }
+
   loading.value = true;
   try {
-    rows.value = await $fetch<any[]>("/api/admin/checkins");
+    // ช่วง [from 00:00, วันถัดจาก to 00:00) — รวมวันสิ้นสุดทั้งวัน
+    const from = parseDateInput(dateFrom.value);
+    const to = parseDateInput(dateTo.value);
+    to.setDate(to.getDate() + 1);
+
+    rows.value = await $fetch<any[]>("/api/admin/checkins", {
+      query: { from: from.toISOString(), to: to.toISOString() },
+    });
   } catch (e) {
     console.error(e);
     rows.value = [];
@@ -82,25 +118,52 @@ async function loadTeachers() {
   teacherLoading.value = false;
 }
 
+const teacherModalOpen = ref(false);
+const teacherSaving = ref(false);
+const teacherError = ref("");
+
+function openAddTeacher() {
+  resetTeacherForm();
+  teacherError.value = "";
+  teacherModalOpen.value = true;
+}
+
+function closeTeacherModal() {
+  if (teacherSaving.value) return;
+  teacherModalOpen.value = false;
+  resetTeacherForm();
+}
+
 async function saveTeacher() {
+  teacherError.value = "";
   if (!teacherForm.value.teacher_number || !teacherForm.value.full_name) {
-    alert("กรุณากรอกข้อมูลให้ครบ");
+    teacherError.value = "กรุณากรอกเลขที่ครูและชื่อ-สกุล";
     return;
   }
+  teacherSaving.value = true;
+  try {
+    await persistTeacher();
+  } finally {
+    teacherSaving.value = false;
+  }
+}
+
+async function persistTeacher() {
   if (teacherForm.value.id) {
-    const { error } = await $supabase
+    const { data, error } = await $supabase
       .from("teachers")
       .update({
         teacher_number: teacherForm.value.teacher_number,
         full_name: teacherForm.value.full_name,
         position_name: teacherForm.value.position_name,
       })
-      .eq("id", teacherForm.value.id);
-    if (error) {
-      alert("แก้ไขข้อมูลไม่สำเร็จ");
+      .eq("id", teacherForm.value.id)
+      .select();
+    if (error || !data?.length) {
+      console.error(error ?? "update affected 0 rows (RLS?)");
+      teacherError.value = "แก้ไขข้อมูลไม่สำเร็จ";
       return;
     }
-    alert("แก้ไขข้อมูลสำเร็จ");
   } else {
     const { error } = await $supabase.from("teachers").insert({
       teacher_number: teacherForm.value.teacher_number,
@@ -108,11 +171,15 @@ async function saveTeacher() {
       position_name: teacherForm.value.position_name,
     });
     if (error) {
-      alert("เพิ่มข้อมูลไม่สำเร็จ");
+      console.error(error);
+      teacherError.value =
+        error.code === "23505"
+          ? "เลขที่ครูนี้มีอยู่แล้ว"
+          : "เพิ่มข้อมูลไม่สำเร็จ";
       return;
     }
-    alert("เพิ่มข้อมูลสำเร็จ");
   }
+  teacherModalOpen.value = false;
   resetTeacherForm();
   await loadTeachers();
 }
@@ -124,13 +191,20 @@ function editTeacher(item: any) {
     full_name: item.full_name,
     position_name: item.position_name || "",
   };
+  teacherError.value = "";
+  teacherModalOpen.value = true;
 }
 
 async function deleteTeacher(id: number) {
   const ok = await showConfirm("ลบข้อมูลครู", "ต้องการลบข้อมูลครูรายนี้ใช่หรือไม่?");
   if (!ok) return;
-  const { error } = await $supabase.from("teachers").delete().eq("id", id);
-  if (error) {
+  const { data, error } = await $supabase
+    .from("teachers")
+    .delete()
+    .eq("id", id)
+    .select();
+  if (error || !data?.length) {
+    console.error(error ?? "delete affected 0 rows (RLS?)");
     alert("ลบข้อมูลไม่สำเร็จ");
     return;
   }
@@ -271,9 +345,27 @@ async function loadAdminUsers() {
   adminLoading.value = false;
 }
 
+const adminModalOpen = ref(false);
+
+function openAddAdmin() {
+  adminForm.value = { username: "", password: "" };
+  adminError.value = "";
+  adminModalOpen.value = true;
+}
+
+function closeAdminModal() {
+  if (adminSaving.value) return;
+  adminModalOpen.value = false;
+  adminForm.value = { username: "", password: "" };
+}
+
 async function createAdmin() {
   if (!adminForm.value.username || !adminForm.value.password) {
     adminError.value = "กรุณากรอกข้อมูลให้ครบ";
+    return;
+  }
+  if (adminForm.value.password.length < 6) {
+    adminError.value = "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
     return;
   }
   adminSaving.value = true;
@@ -284,6 +376,7 @@ async function createAdmin() {
       body: adminForm.value,
     });
     adminForm.value = { username: "", password: "" };
+    adminModalOpen.value = false;
     await loadAdminUsers();
   } catch (e: any) {
     adminError.value = e?.data?.message ?? "สร้างผู้ใช้ไม่สำเร็จ";
@@ -324,6 +417,23 @@ const filteredRows = computed(() => {
   });
 });
 
+// Pagination
+const PAGE_SIZE = 50;
+const page = ref(1);
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredRows.value.length / PAGE_SIZE)),
+);
+const pagedRows = computed(() =>
+  filteredRows.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE),
+);
+const pageStart = computed(() => (page.value - 1) * PAGE_SIZE);
+watch([search, activeTab, classroomTab], () => {
+  page.value = 1;
+});
+watch(totalPages, (t) => {
+  if (page.value > t) page.value = t;
+});
+
 function classroomCount(room: string) {
   return rows.value.filter(
     (x) => x.user_type === "student" && x.class_room === room,
@@ -350,6 +460,11 @@ const studentCount = computed(
 const teacherCheckinCount = computed(
   () => rows.value.filter((x) => x.user_type === "teacher").length,
 );
+
+watch([dateFrom, dateTo], () => {
+  page.value = 1;
+  loadData();
+});
 
 watch(activeTab, () => {
   classroomTab.value = "all";
@@ -418,6 +533,29 @@ onMounted(async () => {
 
       <!-- ===== CHECKINS TAB ===== -->
       <div v-if="dashboardTab === 'checkins'">
+        <!-- DATE RANGE -->
+        <div class="range-bar">
+          <span class="range-label">📅 ช่วงวันที่</span>
+          <div class="range-inputs">
+            <input
+              v-model="dateFrom"
+              type="date"
+              class="date-input"
+              :max="dateTo || undefined"
+              :disabled="loading"
+            />
+            <span class="range-sep">ถึง</span>
+            <input
+              v-model="dateTo"
+              type="date"
+              class="date-input"
+              :min="dateFrom || undefined"
+              :disabled="loading"
+            />
+          </div>
+          <span v-if="dateError" class="range-error">⚠️ {{ dateError }}</span>
+        </div>
+
         <!-- STATS -->
         <div class="stat-grid">
           <div class="stat-card">
@@ -563,8 +701,8 @@ onMounted(async () => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(item, index) in filteredRows" :key="item.id">
-                  <td class="td-index">{{ index + 1 }}</td>
+                <tr v-for="(item, index) in pagedRows" :key="item.id">
+                  <td class="td-index">{{ pageStart + index + 1 }}</td>
                   <td>
                     <span
                       class="badge"
@@ -621,48 +759,31 @@ onMounted(async () => {
             </table>
           </div>
           <div v-if="!loading && filteredRows.length > 0" class="table-footer">
-            แสดง {{ filteredRows.length }} จาก {{ rows.length }} รายการ
+            <span>
+              แสดง {{ pageStart + 1 }}–{{ pageStart + pagedRows.length }}
+              จาก {{ filteredRows.length }} รายการ
+            </span>
+            <div v-if="totalPages > 1" class="pager">
+              <button class="pager-btn" :disabled="page === 1" @click="page = 1">«</button>
+              <button class="pager-btn" :disabled="page === 1" @click="page--">‹</button>
+              <span class="pager-info">หน้า {{ page }} / {{ totalPages }}</span>
+              <button class="pager-btn" :disabled="page === totalPages" @click="page++">›</button>
+              <button class="pager-btn" :disabled="page === totalPages" @click="page = totalPages">»</button>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- ===== ADMINS TAB ===== -->
       <div v-if="dashboardTab === 'admins'">
-        <!-- FORM -->
-        <div class="form-card">
-          <div class="form-card-header">
-            <div class="form-header-left">
-              <div class="form-icon">➕</div>
-              <div>
-                <h3 class="form-title">เพิ่ม Admin</h3>
-                <p class="form-sub">สร้างบัญชีผู้ดูแลระบบใหม่</p>
-              </div>
-            </div>
-          </div>
-          <div class="form-grid">
-            <div class="form-field">
-              <label class="form-label">ชื่อผู้ใช้ <span class="required">*</span></label>
-              <input v-model="adminForm.username" class="form-input" placeholder="เช่น admin2" />
-            </div>
-            <div class="form-field">
-              <label class="form-label">รหัสผ่าน <span class="required">*</span></label>
-              <input v-model="adminForm.password" type="password" class="form-input" placeholder="••••••••" />
-            </div>
-            <div class="form-field form-field--action">
-              <label class="form-label">&nbsp;</label>
-              <button class="btn-save" @click="createAdmin" :disabled="adminSaving">
-                {{ adminSaving ? "⏳ กำลังสร้าง..." : "➕ สร้าง Admin" }}
-              </button>
-            </div>
-          </div>
-          <div v-if="adminError" class="admin-error">⚠️ {{ adminError }}</div>
-        </div>
-
         <!-- LIST -->
         <div class="table-card">
           <div class="table-card-header">
-            <h3 class="table-card-title">รายชื่อ Admin ทั้งหมด</h3>
-            <span class="teacher-total-badge">{{ adminUsers.length }} คน</span>
+            <div class="table-card-header-left">
+              <h3 class="table-card-title">รายชื่อ Admin ทั้งหมด</h3>
+              <span class="teacher-total-badge">{{ adminUsers.length }} คน</span>
+            </div>
+            <button class="btn-save" @click="openAddAdmin">➕ เพิ่ม Admin</button>
           </div>
           <div v-if="adminLoading" class="table-state">
             <div class="spinner" />
@@ -708,76 +829,14 @@ onMounted(async () => {
 
       <!-- ===== TEACHERS TAB ===== -->
       <div v-if="dashboardTab === 'teachers'">
-        <!-- FORM CARD -->
-        <div class="form-card">
-          <div class="form-card-header">
-            <div class="form-header-left">
-              <div class="form-icon">{{ teacherForm.id ? "✏️" : "➕" }}</div>
-              <div>
-                <h3 class="form-title">
-                  {{ teacherForm.id ? "แก้ไขข้อมูลครู" : "เพิ่มข้อมูลครู" }}
-                </h3>
-                <p class="form-sub">
-                  {{
-                    teacherForm.id
-                      ? "แก้ไขข้อมูลที่ต้องการ"
-                      : "กรอกข้อมูลครูใหม่"
-                  }}
-                </p>
-              </div>
-            </div>
-            <button
-              v-if="teacherForm.id"
-              class="btn-cancel"
-              @click="resetTeacherForm"
-            >
-              ✕ ยกเลิก
-            </button>
-          </div>
-
-          <div class="form-grid">
-            <div class="form-field">
-              <label class="form-label"
-                >เลขที่ครู <span class="required">*</span></label
-              >
-              <input
-                v-model="teacherForm.teacher_number"
-                class="form-input"
-                placeholder="เช่น 1"
-              />
-            </div>
-            <div class="form-field form-field--wide">
-              <label class="form-label"
-                >ชื่อ – สกุล <span class="required">*</span></label
-              >
-              <input
-                v-model="teacherForm.full_name"
-                class="form-input"
-                placeholder="กรอกชื่อ-สกุล"
-              />
-            </div>
-            <div class="form-field form-field--wide">
-              <label class="form-label">ตำแหน่ง</label>
-              <input
-                v-model="teacherForm.position_name"
-                class="form-input"
-                placeholder="เช่น ครูชำนาญการ"
-              />
-            </div>
-            <div class="form-field form-field--action">
-              <label class="form-label">&nbsp;</label>
-              <button class="btn-save" @click="saveTeacher">
-                {{ teacherForm.id ? "💾 บันทึกการแก้ไข" : "➕ เพิ่มครู" }}
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- TEACHER TABLE -->
         <div class="table-card">
           <div class="table-card-header">
-            <h3 class="table-card-title">รายชื่อครูทั้งหมด</h3>
-            <span class="teacher-total-badge">{{ teacherRows.length }} คน</span>
+            <div class="table-card-header-left">
+              <h3 class="table-card-title">รายชื่อครูทั้งหมด</h3>
+              <span class="teacher-total-badge">{{ teacherRows.length }} คน</span>
+            </div>
+            <button class="btn-save" @click="openAddTeacher">➕ เพิ่มครู</button>
           </div>
 
           <div v-if="teacherLoading" class="table-state">
@@ -835,6 +894,119 @@ onMounted(async () => {
       </div>
     </div>
   </div>
+
+  <!-- ADMIN FORM DIALOG -->
+  <teleport to="body">
+    <transition name="modal-fade">
+      <div v-if="adminModalOpen" class="modal-backdrop" @click.self="closeAdminModal">
+        <div class="modal-box modal-box--form">
+          <div class="modal-form-header">
+            <div class="form-icon">🔐</div>
+            <div>
+              <h3 class="form-title">เพิ่ม Admin</h3>
+              <p class="form-sub">สร้างบัญชีผู้ดูแลระบบใหม่</p>
+            </div>
+          </div>
+
+          <form class="modal-form" @submit.prevent="createAdmin">
+            <div class="form-field">
+              <label class="form-label">ชื่อผู้ใช้ <span class="required">*</span></label>
+              <input
+                v-model="adminForm.username"
+                class="form-input"
+                placeholder="เช่น admin2"
+                autocomplete="off"
+              />
+            </div>
+            <div class="form-field">
+              <label class="form-label">รหัสผ่าน <span class="required">*</span></label>
+              <input
+                v-model="adminForm.password"
+                type="password"
+                class="form-input"
+                placeholder="อย่างน้อย 6 ตัวอักษร"
+                autocomplete="new-password"
+              />
+            </div>
+
+            <div v-if="adminError" class="modal-error">⚠️ {{ adminError }}</div>
+
+            <div class="modal-actions">
+              <button
+                type="button"
+                class="modal-btn modal-btn--cancel"
+                :disabled="adminSaving"
+                @click="closeAdminModal"
+              >
+                ยกเลิก
+              </button>
+              <button type="submit" class="modal-btn modal-btn--primary" :disabled="adminSaving">
+                {{ adminSaving ? "⏳ กำลังสร้าง..." : "➕ สร้าง Admin" }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </transition>
+  </teleport>
+
+  <!-- TEACHER FORM DIALOG -->
+  <teleport to="body">
+    <transition name="modal-fade">
+      <div v-if="teacherModalOpen" class="modal-backdrop" @click.self="closeTeacherModal">
+        <div class="modal-box modal-box--form">
+          <div class="modal-form-header">
+            <div class="form-icon">{{ teacherForm.id ? "✏️" : "➕" }}</div>
+            <div>
+              <h3 class="form-title">
+                {{ teacherForm.id ? "แก้ไขข้อมูลครู" : "เพิ่มข้อมูลครู" }}
+              </h3>
+              <p class="form-sub">
+                {{ teacherForm.id ? "แก้ไขข้อมูลที่ต้องการ" : "กรอกข้อมูลครูใหม่" }}
+              </p>
+            </div>
+          </div>
+
+          <form class="modal-form" @submit.prevent="saveTeacher">
+            <div class="form-field">
+              <label class="form-label">เลขที่ครู <span class="required">*</span></label>
+              <input
+                v-model="teacherForm.teacher_number"
+                class="form-input"
+                inputmode="numeric"
+                placeholder="เช่น 1"
+                @input="teacherForm.teacher_number = teacherForm.teacher_number.replace(/[^0-9]/g, '')"
+              />
+            </div>
+            <div class="form-field">
+              <label class="form-label">ชื่อ – สกุล <span class="required">*</span></label>
+              <input v-model="teacherForm.full_name" class="form-input" placeholder="กรอกชื่อ-สกุล" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">ตำแหน่ง</label>
+              <input v-model="teacherForm.position_name" class="form-input" placeholder="เช่น ครูชำนาญการ" />
+            </div>
+
+            <div v-if="teacherError" class="modal-error">⚠️ {{ teacherError }}</div>
+
+            <div class="modal-actions">
+              <button
+                type="button"
+                class="modal-btn modal-btn--cancel"
+                :disabled="teacherSaving"
+                @click="closeTeacherModal"
+              >
+                ยกเลิก
+              </button>
+              <button type="submit" class="modal-btn modal-btn--primary" :disabled="teacherSaving">
+                {{ teacherSaving ? "⏳ กำลังบันทึก..." : teacherForm.id ? "💾 บันทึก" : "➕ เพิ่มครู" }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </transition>
+  </teleport>
 
   <!-- CONFIRM DIALOG -->
   <teleport to="body">
@@ -1419,8 +1591,47 @@ onMounted(async () => {
   border-top: 1px solid #f1f5f9;
   font-size: 12px;
   color: #94a3b8;
-  text-align: right;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pager-btn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pager-btn:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.pager-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pager-info {
+  padding: 0 8px;
+  color: #475569;
+  font-weight: 600;
 }
 
 /* FORM CARD */
@@ -1609,6 +1820,64 @@ onMounted(async () => {
   transform: translateY(-1px);
 }
 
+/* DATE RANGE */
+.range-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.range-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 4px 8px;
+}
+
+.date-input {
+  height: 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 0 10px;
+  font-size: 13px;
+  font-family: "Sarabun", sans-serif;
+  color: #0f172a;
+  outline: none;
+}
+
+.date-input:focus {
+  border-color: #2563eb;
+  background: #fff;
+}
+
+.date-input:disabled {
+  opacity: 0.6;
+}
+
+.range-sep {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.range-error {
+  font-size: 12px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
 /* CLASSROOM TABS */
 .classroom-tab-wrap {
   background: #fff;
@@ -1757,6 +2026,60 @@ onMounted(async () => {
 .modal-btn--confirm:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+
+.modal-box--form {
+  max-width: 440px;
+  text-align: left;
+  padding: 1.5rem;
+}
+
+.modal-form-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-form .modal-actions {
+  margin-top: 8px;
+}
+
+.modal-error {
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal-btn--primary {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.modal-btn--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.table-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .modal-fade-enter-active,
