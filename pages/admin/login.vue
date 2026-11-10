@@ -12,13 +12,20 @@ async function handleLogin() {
 
   const email = `${username.value.trim().toLowerCase()}@checkin.local`;
 
-  const { error } = await $supabase.auth.signInWithPassword({
+  const { data, error } = await $supabase.auth.signInWithPassword({
     email,
     password: password.value,
   });
 
   if (error) {
     errorText.value = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
+    loading.value = false;
+    return;
+  }
+
+  if (data.user?.app_metadata?.role !== "admin") {
+    await $supabase.auth.signOut();
+    errorText.value = "บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ";
     loading.value = false;
     return;
   }

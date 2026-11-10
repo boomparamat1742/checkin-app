@@ -1,4 +1,5 @@
 export default defineEventHandler(async (event) => {
+  await requireAdmin(event);
   const config = useRuntimeConfig();
   const body = await readBody(event);
 
@@ -17,7 +18,12 @@ export default defineEventHandler(async (event) => {
       Authorization: `Bearer ${config.supabaseServiceKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ email, password, email_confirm: true }),
+    body: JSON.stringify({
+      email,
+      password,
+      email_confirm: true,
+      app_metadata: { role: "admin" },
+    }),
   });
 
   if (!res.ok) {

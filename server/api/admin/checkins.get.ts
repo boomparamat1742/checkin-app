@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 export default defineEventHandler(async (event) => {
+  await requireAdmin(event);
   const config = useRuntimeConfig();
   const { from, to } = getQuery(event) as { from?: string; to?: string };
 

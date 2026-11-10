@@ -8,4 +8,10 @@ export default defineNuxtRouteMiddleware(async () => {
   if (!data.session) {
     return navigateTo("/admin/login");
   }
+
+  // ต้องเป็น admin (app_metadata ตั้งได้จาก server เท่านั้น)
+  if (data.session.user.app_metadata?.role !== "admin") {
+    await $supabase.auth.signOut();
+    return navigateTo("/admin/login");
+  }
 });

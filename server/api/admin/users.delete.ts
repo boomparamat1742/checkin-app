@@ -1,13 +1,15 @@
 export default defineEventHandler(async (event) => {
+  const requester = await requireAdmin(event);
   const config = useRuntimeConfig();
   const body = await readBody(event);
-  const { id, requesterId } = body as { id: string; requesterId: string };
+  const { id } = body as { id: string };
 
   if (!id) {
     throw createError({ statusCode: 400, message: "id required" });
   }
 
-  if (id === requesterId) {
+  // ใช้ id ที่ server ตรวจจาก token เอง ไม่เชื่อค่าจาก client
+  if (id === requester.id) {
     throw createError({ statusCode: 403, message: "ไม่สามารถลบบัญชีที่กำลังใช้งานอยู่" });
   }
 

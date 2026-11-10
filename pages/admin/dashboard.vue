@@ -58,6 +58,31 @@ const CLASSROOMS = Array.from({ length: 6 }, (_, m) =>
   Array.from({ length: 3 }, (_, r) => `${m + 1}/${r + 1}`),
 ).flat();
 
+// เรียก /api/admin/* พร้อมแนบ access token ของ admin ที่ login อยู่
+async function adminFetch<T>(
+  url: string,
+  opts: Parameters<typeof $fetch>[1] = {},
+): Promise<T> {
+  const { data } = await $supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) {
+    await navigateTo("/admin/login");
+    throw new Error("no session");
+  }
+  try {
+    return (await $fetch(url, {
+      ...opts,
+      headers: { ...(opts.headers as Record<string, string>), Authorization: `Bearer ${token}` },
+    })) as T;
+  } catch (e: any) {
+    if (e?.statusCode === 401 || e?.statusCode === 403) {
+      await $supabase.auth.signOut();
+      await navigateTo("/admin/login");
+    }
+    throw e;
+  }
+}
+
 // วันที่ในรูปแบบ YYYY-MM-DD ตามเวลาท้องถิ่น (สำหรับ <input type="date">)
 function toDateInput(d: Date): string {
   const y = d.getFullYear();
@@ -95,7 +120,7 @@ async function loadData() {
     const to = parseDateInput(dateTo.value);
     to.setDate(to.getDate() + 1);
 
-    rows.value = await $fetch<any[]>("/api/admin/checkins", {
+    rows.value = await adminFetch<any[]>("/api/admin/checkins", {
       query: { from: from.toISOString(), to: to.toISOString() },
     });
   } catch (e) {
@@ -338,7 +363,7 @@ async function handleLogout() {
 async function loadAdminUsers() {
   adminLoading.value = true;
   try {
-    adminUsers.value = await $fetch("/api/admin/users");
+    adminUsers.value = await adminFetch("/api/admin/users");
   } catch {
     adminUsers.value = [];
   }
@@ -371,7 +396,7 @@ async function createAdmin() {
   adminSaving.value = true;
   adminError.value = "";
   try {
-    await $fetch("/api/admin/users", {
+    await adminFetch("/api/admin/users", {
       method: "POST",
       body: adminForm.value,
     });
@@ -389,9 +414,9 @@ async function deleteAdmin(id: string, email: string) {
   const ok = await showConfirm("ลบ Admin", `ต้องการลบบัญชี "${name}" ใช่หรือไม่?`);
   if (!ok) return;
   try {
-    await $fetch("/api/admin/users", {
+    await adminFetch("/api/admin/users", {
       method: "DELETE",
-      body: { id, requesterId: currentUserId.value },
+      body: { id },
     });
     await loadAdminUsers();
   } catch (e: any) {

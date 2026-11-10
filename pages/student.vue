@@ -91,29 +91,7 @@ async function handleCheckin() {
 
   const deviceId = getDeviceId();
 
-  // วันที่วันนี้
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  // ตรวจสอบว่า device นี้เช็คอินแล้วหรือยัง
-  const { data: existing } = await $supabase
-    .from("checkins")
-    .select("id")
-    .eq("device_id", deviceId)
-    .gte("checkin_at", today.toISOString())
-    .lt("checkin_at", tomorrow.toISOString())
-    .maybeSingle();
-
-  if (existing) {
-    status.value = "อุปกรณ์นี้เช็คชื่อแล้ววันนี้";
-    statusType.value = "error";
-    loading.value = false;
-    return;
-  }
-
+  // การกันเช็คชื่อซ้ำ (อุปกรณ์/นักเรียน ต่อวัน) ทำด้วย unique index ใน database
   try {
     const gps = await collectGps((msg) => {
       status.value = msg;
@@ -142,7 +120,8 @@ async function handleCheckin() {
     });
 
     if (error) {
-      status.value = "บันทึกข้อมูลไม่สำเร็จ";
+      console.error(error);
+      status.value = checkinErrorMessage(error);
       statusType.value = "error";
     } else {
       status.value = checkin.message;
